@@ -150,6 +150,7 @@ SET(PathPythonPostScripts_SRCS
     Path/Post/scripts/gcode_pre.py
     Path/Post/scripts/generic_post.py
     Path/Post/scripts/grbl_post.py
+    Path/Post/scripts/haasngc_post.py
     Path/Post/scripts/heidenhain_post.py
     Path/Post/scripts/jtech_post.py
     Path/Post/scripts/KineticNCBeamicon2_post.py
