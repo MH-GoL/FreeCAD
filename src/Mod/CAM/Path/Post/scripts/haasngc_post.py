@@ -53,7 +53,7 @@ now = datetime.datetime.now()
 parser = argparse.ArgumentParser(prog="haasngc", add_help=False)
 parser.add_argument("--no-header", action="store_true", help="suppress header output")
 parser.add_argument("--no-comments", action="store_true", help="suppress comment output")
-parser.add_argument("--line-numbers", action="store_true", help="prefix with line numbers")
+parser.add_argument("--no-line-numbers", action="store_true", help="prefix without line numbers")
 parser.add_argument(
     "--no-show-editor",
     action="store_true",
@@ -84,13 +84,23 @@ parser.add_argument(
     action="store_true",
     help="suppress tool length offset (G43) following tool changes",
 )
+parser.add_argument(
+    "--no-pre-stagging",
+    action="store_true",
+    help="suppress tool pre-stagging",
+)
+parser.add_argument(
+    "--debug",
+    action="store_true",
+    help="show debug prints",
+)
 
 TOOLTIP_ARGS = parser.format_help()
 
 # These globals set common customization preferences
 OUTPUT_COMMENTS = True
 OUTPUT_HEADER = True
-OUTPUT_LINE_NUMBERS = False
+OUTPUT_LINE_NUMBERS = True
 SHOW_EDITOR = True
 MODAL = True  # if true commands are suppressed if the same as previous line.
 USE_TLO = True  # if true G43 will be output following tool changes
@@ -114,6 +124,10 @@ PRECISION = 3
 # rigid tapping.
 tapSpeed = 0
 
+# this globals are used to realise tool pre-staging
+toolSequence = []
+toolSequencePos = 0
+
 # Preamble text will appear at the beginning of the GCODE output file.
 PREAMBLE = """G17 G54 G40 G49 G80 G90
 """
@@ -133,6 +147,10 @@ POST_OPERATION = """"""
 
 # Tool Change commands will be inserted before a tool change
 TOOL_CHANGE = """"""
+
+TOOL_PRE_STAGGING = True
+
+DEBUG = False
 
 class GCodeHighlighter(QtGui.QSyntaxHighlighter):
     def __init__(self, parent=None):
@@ -217,6 +235,8 @@ def processArguments(argstring):
     global MODAL
     global USE_TLO
     global OUTPUT_DOUBLES
+    global DEBUG
+    global TOOL_PRE_STAGGING
 
     try:
         args = parser.parse_args(shlex.split(argstring))
@@ -224,8 +244,8 @@ def processArguments(argstring):
             OUTPUT_HEADER = False
         if args.no_comments:
             OUTPUT_COMMENTS = False
-        if args.line_numbers:
-            OUTPUT_LINE_NUMBERS = True
+        if args.no_line_numbers:
+            OUTPUT_LINE_NUMBERS = False
         if args.no_show_editor:
             SHOW_EDITOR = False
         print("Show editor = %d" % SHOW_EDITOR)
@@ -243,8 +263,12 @@ def processArguments(argstring):
             MODAL = False
         if args.no_tlo:
             USE_TLO = False
+        if args.no_pre_stagging:
+            TOOL_PRE_STAGGING = False
         if args.no_axis_modal:
             OUTPUT_DOUBLES = True
+        if args.debug:
+            DEBUG = True
 
     except Exception:
         return False
@@ -260,6 +284,7 @@ def export(objectslist, filename, argstring):
     global UNIT_SPEED_FORMAT
     global HORIZRAPID
     global VERTRAPID
+    global toolSequence
 
     for obj in objectslist:
         if not hasattr(obj, "Path"):
@@ -267,6 +292,10 @@ def export(objectslist, filename, argstring):
                 "the object " + obj.Name + " is not a path. Please select only path and Compounds."
             )
             return None
+
+        # fills tool sequence for pre-stagging
+        if hasattr(obj, "Base"):
+            toolSequence.append(obj.ToolController.ToolNumber)
 
     print("postprocessing...")
     gcode = ""
@@ -299,9 +328,6 @@ def export(objectslist, filename, argstring):
 
         # do the pre_op
         if OUTPUT_COMMENTS:
-            #print("OBJ", dir(obj))
-            #print("Content: ", obj.Path.Content)
-            #print("Cycle Time: ", obj.CoolantMode)
             gcode += "(BEGIN OPERATION: %s)\n" % obj.Label.upper()
             if hasattr(obj, "CycleTime"):
                 gcode += "(CYCLE TIME: %s)\n" % (obj.CycleTime)
@@ -319,7 +345,7 @@ def export(objectslist, filename, argstring):
         # turn coolant on if required
         if OUTPUT_COMMENTS:
             if not coolantMode == "None":
-                gcode += "(COOLANT ON:" + coolantMode.upper() + ")\n"
+                gcode += "(COOLANT ON: " + coolantMode.upper() + ")\n"
         if coolantMode == "Flood":
             gcode += linenumber() + "M8" + "\n"
         elif coolantMode == "Mist":
@@ -328,6 +354,10 @@ def export(objectslist, filename, argstring):
             gcode += linenumber() + "M88" + "\n"
         elif coolantMode == "TSC+Flood":
             gcode += linenumber() + "M8 M88" + "\n"
+        elif coolantMode == "TAB":
+            gcode += linenumber() + "M73" + "\n"
+        elif coolantMode == "AAG":
+            gcode += linenumber() + "M83" + "\n"
 
         # process the operation gcode
         gcode += parse(obj)
@@ -341,9 +371,20 @@ def export(objectslist, filename, argstring):
         # turn coolant off if required
         if not coolantMode == "None":
             if OUTPUT_COMMENTS:
-                gcode += "(COOLANT OFF:" + coolantMode.upper() + ")\n"
-            gcode += linenumber() + "M9 M89" + "\n"
-
+                gcode += "(COOLANT OFF: " + coolantMode.upper() + ")\n"
+            #gcode += linenumber() + "M9 M89" + "\n"
+            if coolantMode == "Flood":
+                gcode += linenumber() + "M9" + "\n"
+            elif coolantMode == "Mist":
+                gcode += linenumber() + "M9" + "\n"
+            elif coolantMode == "TSC":
+                gcode += linenumber() + "M89" + "\n"
+            elif coolantMode == "TSC+Flood":
+                gcode += linenumber() + "M9 M89" + "\n"
+            elif coolantMode == "TAB":
+                gcode += linenumber() + "M74" + "\n"
+            elif coolantMode == "AAG":
+                gcode += linenumber() + "M84" + "\n"
     # do the post_amble
     if OUTPUT_COMMENTS:
         gcode += "(BEGIN POSTAMBLE)\n"
@@ -399,6 +440,15 @@ def linenumber():
         return "N" + str(LINENR) + " "
     return ""
 
+def toolnumbers():
+    global toolSequence
+    global toolSequencePos
+    tool = toolSequence[toolSequencePos]
+    nextTool = 0
+    toolSequencePos += 1
+    if ((toolSequencePos) < len(toolSequence)):
+        nextTool = toolSequence[toolSequencePos]
+    return [tool, nextTool]
 
 def parse(pathobj):
     global PRECISION
@@ -412,7 +462,6 @@ def parse(pathobj):
     lastcommand = None
     precision_string = "." + str(PRECISION) + "f"
     currLocation = {}  # keep track for no doubles
-    print("Startup!")
 
     # the order of parameters
     # arcs need work.  original code from mach3_4 doesn't want K properties on XY plane.  Not sure
@@ -483,7 +532,7 @@ def parse(pathobj):
             if command == "G81" or command == "G83":
                 if (
                     hasattr(pathobj, "ToolController")
-                    and pathobj.ToolController.Tool.ToolType == "Tap"
+                    and pathobj.ToolController.Tool.ShapeName == "Tap"
                 ):
                     command = "G84"
                     out += linenumber() + "G95\n"
@@ -622,7 +671,13 @@ def parse(pathobj):
                 for line in TOOL_CHANGE.splitlines(True):
                     out += linenumber() + line
 
-                out += linenumber() + "M6 T" + str(int(c.Parameters["T"])) + "\n"
+                tools = toolnumbers()
+
+                out += linenumber() + "M6 T" + str(tools[0]) + "\n"
+
+                if TOOL_PRE_STAGGING and tools[1] > 0 :
+                    out += linenumber() + "T" + str(tools[1]) + "\n"
+
 
                 # add height offset
                 if USE_TLO:
@@ -638,13 +693,12 @@ def parse(pathobj):
             # prepend a line number and append a newline
             if len(outstring) >= 1:
                 if OUTPUT_LINE_NUMBERS and not outstring[0][0] == "(": #No line number on comments
-                    outstring.insert(0, (linenumber()))
+                    outstring.insert(0, (linenumber()[:-1]))
 
                 # append the line to the final output
                 for w in outstring:
                     out += w.upper() + COMMAND_SPACE
                 out = out.strip() + "\n"
-                #out = out.replace("  ", " ") #TODO: BAD BAD Workaround for clean double spaces, search for better way!
 
         return out
 
