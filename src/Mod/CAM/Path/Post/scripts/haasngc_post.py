@@ -306,6 +306,8 @@ def export(objectslist, filename, argstring):
         gcode += "O\n"
         gcode += "(EXPORTED BY FREECAD!)\n"
         gcode += "(POST PROCESSOR: " + MACHINE_NAME + ")\n"
+        gcode += "(WITHOUT WARRANTY OF ANY KIND)\n"
+        gcode += "(PLEASE CHECK THE G-CODE BEFORE RUNNING)\n"
         gcode += "(OUTPUT TIME: " + str(now).upper() + ")\n"
 
     # Write the preamble
