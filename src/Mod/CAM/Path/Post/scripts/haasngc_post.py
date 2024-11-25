@@ -85,9 +85,9 @@ parser.add_argument(
     help="suppress tool length offset (G43) following tool changes",
 )
 parser.add_argument(
-    "--no-pre-stagging",
+    "--no-pre-staging",
     action="store_true",
-    help="suppress tool pre-stagging",
+    help="suppress tool pre-staging",
 )
 parser.add_argument(
     "--debug",
@@ -148,9 +148,10 @@ POST_OPERATION = """"""
 # Tool Change commands will be inserted before a tool change
 TOOL_CHANGE = """"""
 
-TOOL_PRE_STAGGING = True
+TOOL_PRE_STAGING = True
 
 DEBUG = False
+
 
 class GCodeHighlighter(QtGui.QSyntaxHighlighter):
     def __init__(self, parent=None):
@@ -236,7 +237,7 @@ def processArguments(argstring):
     global USE_TLO
     global OUTPUT_DOUBLES
     global DEBUG
-    global TOOL_PRE_STAGGING
+    global TOOL_PRE_STAGING
 
     try:
         args = parser.parse_args(shlex.split(argstring))
@@ -263,8 +264,8 @@ def processArguments(argstring):
             MODAL = False
         if args.no_tlo:
             USE_TLO = False
-        if args.no_pre_stagging:
-            TOOL_PRE_STAGGING = False
+        if args.no_pre_staging:
+            TOOL_PRE_STAGING = False
         if args.no_axis_modal:
             OUTPUT_DOUBLES = True
         if args.debug:
@@ -293,7 +294,7 @@ def export(objectslist, filename, argstring):
             )
             return None
 
-        # fills tool sequence for pre-stagging
+        # fills tool sequence for pre-staging
         if hasattr(obj, "Base"):
             toolSequence.append(obj.ToolController.ToolNumber)
 
@@ -372,7 +373,7 @@ def export(objectslist, filename, argstring):
         if not coolantMode == "None":
             if OUTPUT_COMMENTS:
                 gcode += "(COOLANT OFF: " + coolantMode.upper() + ")\n"
-            #gcode += linenumber() + "M9 M89" + "\n"
+            # gcode += linenumber() + "M9 M89" + "\n"
             if coolantMode == "Flood":
                 gcode += linenumber() + "M9" + "\n"
             elif coolantMode == "Mist":
@@ -440,15 +441,17 @@ def linenumber():
         return "N" + str(LINENR) + " "
     return ""
 
+
 def toolnumbers():
     global toolSequence
     global toolSequencePos
     tool = toolSequence[toolSequencePos]
     nextTool = 0
     toolSequencePos += 1
-    if ((toolSequencePos) < len(toolSequence)):
+    if (toolSequencePos) < len(toolSequence):
         nextTool = toolSequence[toolSequencePos]
     return [tool, nextTool]
+
 
 def parse(pathobj):
     global PRECISION
@@ -675,9 +678,8 @@ def parse(pathobj):
 
                 out += linenumber() + "M6 T" + str(tools[0]) + "\n"
 
-                if TOOL_PRE_STAGGING and tools[1] > 0 :
+                if TOOL_PRE_STAGING and tools[1] > 0 and tools[0] != tools[1]:
                     out += linenumber() + "T" + str(tools[1]) + "\n"
-
 
                 # add height offset
                 if USE_TLO:
@@ -692,7 +694,7 @@ def parse(pathobj):
 
             # prepend a line number and append a newline
             if len(outstring) >= 1:
-                if OUTPUT_LINE_NUMBERS and not outstring[0][0] == "(": #No line number on comments
+                if OUTPUT_LINE_NUMBERS and not outstring[0][0] == "(":  # No line number on comments
                     outstring.insert(0, (linenumber()[:-1]))
 
                 # append the line to the final output
