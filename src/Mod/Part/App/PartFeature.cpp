@@ -81,6 +81,8 @@
 using namespace Part;
 namespace sp = std::placeholders;
 
+constexpr const int MaterialPrecision = 6;
+
 FC_LOG_LEVEL_INIT("Part",true,true)
 
 PROPERTY_SOURCE(Part::Feature, App::GeoFeature)
@@ -106,18 +108,24 @@ Feature::Feature()
                       static_cast<App::PropertyType>(App::Prop_ReadOnly | App::Prop_Output
                                                      | App::Prop_NoRecompute | App::Prop_NoPersist),
                       "Feature density");
+    Density.setFormat(
+        Base::QuantityFormat(Base::QuantityFormat::NumberFormat::Default, MaterialPrecision));
     ADD_PROPERTY_TYPE(Mass,
                       (0.0),
                       group,
                       static_cast<App::PropertyType>(App::Prop_ReadOnly | App::Prop_Output
                                                      | App::Prop_NoRecompute | App::Prop_NoPersist),
                       "Feature mass");
+    Mass.setFormat(
+        Base::QuantityFormat(Base::QuantityFormat::NumberFormat::Default, MaterialPrecision));
     ADD_PROPERTY_TYPE(Volume,
                       (1.0),
                       group,
                       static_cast<App::PropertyType>(App::Prop_ReadOnly | App::Prop_Output
                                                      | App::Prop_NoRecompute | App::Prop_NoPersist),
                       "Feature volume");
+    Volume.setFormat(
+        Base::QuantityFormat(Base::QuantityFormat::NumberFormat::Default, MaterialPrecision));
 }
 
 Feature::~Feature() = default;
@@ -365,7 +373,7 @@ App::ElementNamePair Feature::getExportElementName(TopoShape shape,
                     // find it by matching either planes for faces or lines for edges.
                     auto searchShape = this->Shape.getShape();
                     // If we're still out at a Shell, Solid, CompSolid, or Compound drill in
-                    while (searchShape.getShape().ShapeType() < TopAbs_FACE ) {
+                    while (!searchShape.getShape().IsNull() && searchShape.getShape().ShapeType() < TopAbs_FACE ) {
                         auto shapes = searchShape.getSubTopoShapes();
                         if ( shapes.empty() ) // No more subshapes, so don't continue
                             break;
@@ -1018,7 +1026,7 @@ static TopoShape _getTopoShape(const App::DocumentObject* obj,
             if (linked->isDerivedFrom(App::Line::getClassTypeId())) {
                 static TopoDS_Shape _shape;
                 if (_shape.IsNull()) {
-                    BRepBuilderAPI_MakeEdge builder(gp_Lin(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)));
+                    BRepBuilderAPI_MakeEdge builder(gp_Lin(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)));
                     _shape = builder.Shape();
                     _shape.Infinite(Standard_True);
                 }
@@ -1076,6 +1084,7 @@ static TopoShape _getTopoShape(const App::DocumentObject* obj,
                     shape = TopoShape(tag, hasher, _shape);
                 }
             }
+
             if (!shape.isNull()) {
                 shape.transformShape(mat * linkMat, false, true);
                 return shape;
@@ -1552,7 +1561,6 @@ void Feature::updatePhysicalProperties()
         Mass.setValue(Volume.getValue() * Density.getValue());
     } else {
         // No shape
-        Base::Console().Log("No shape defined\n");
         Volume.setValue(0.0);
         Mass.setValue(0.0);
     }
